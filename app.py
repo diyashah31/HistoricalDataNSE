@@ -10,7 +10,7 @@ import numpy as np
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app,origins=["https://674eb2927e66b7f220d5ebd1--bejewelled-marigold-b271f6.netlify.app/"])
+CORS(app,origins=["http://localhost:3000","https://674eb2927e66b7f220d5ebd1--bejewelled-marigold-b271f6.netlify.app/"])
 # CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Load environment variables from .env file
@@ -47,7 +47,7 @@ def get_db_connection():
 def home():
     return jsonify({"message": "Hello, Welcome to Historical NSE Database!"})
 
-@app.route('/api/get-data', methods=['POST'])
+@app.route('/get-data', methods=['POST'])
 def get_data():
     try:
         data = request.get_json()
@@ -100,7 +100,7 @@ def get_data():
         if 'conn' in locals():
             conn.close()
 
-@app.route('/api/insert-data', methods=['POST'])
+@app.route('/insert-data', methods=['POST'])
 def insert_data():
     data = request.json
     from_date = data.get('fromDate')
@@ -237,7 +237,7 @@ def insert_data_into_db(from_date, to_date, symbol):
             conn.close()
             print("Connection closed.")
   
-@app.route('/api/delete-data', methods=['DELETE'])
+@app.route('/delete-data', methods=['DELETE'])
 def delete_data():
     try:
         data = request.get_json()
@@ -270,7 +270,7 @@ def delete_data():
         cursor.close()
         conn.close()
 
-@app.route('/api/export-to-sql', methods=['POST'])
+@app.route('/export-to-sql', methods=['POST'])
 def export_to_sql():
     
     # Get the data and SQL details from the request
