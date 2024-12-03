@@ -29,7 +29,7 @@ ma = historical('diya.shah@finideas.com')
 ma.login("920434")
 
 # SQL Server connection details
-server = '192.168.121.84'
+server = '192.168.121.84,1433'
 database = 'HistoricalData'
 username = 'sa'
 password = 'Fin@123#'
