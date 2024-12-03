@@ -29,10 +29,10 @@ ma = historical('diya.shah@finideas.com')
 ma.login("920434")
 
 # SQL Server connection details
-server = '139.5.190.161,1401'
-database = 'Test'
-username = 'payal'
-password = 'Admin@789456'
+server = '192.168.121.84'
+database = 'HistoricalData'
+username = 'sa'
+password = 'Fin@123#'
 
 def get_db_connection():
     return pytds.connect(
@@ -67,33 +67,27 @@ def get_data():
         # Dynamically set table name based on selection
         table_name = f"{selection}Data"  # Example: "niftyData" or "bankniftyData"
 
-        # Connect to SQL Server
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            print("Database connection successful.")
-        except Exception as e:
-            print(f"Database connection failed: {e}")
-            return jsonify({'error': 'Database connection failed'}), 500
+        # Connect to the database
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-        # Fetch data with parameterized query to avoid SQL injection
+        # Fetch data
         query = f"""
         SELECT TOP 100 * FROM {table_name}
-        WHERE date BETWEEN %s AND %s
+        WHERE date BETWEEN '{from_date}' AND '{to_date}'
         """
-        cursor.execute(query, (from_date, to_date))
+        cursor.execute(query)
         rows = cursor.fetchall()
 
         # Handle case when no data is found
         if not rows:
-            return jsonify({'message': 'No data available'}), 404
+            return jsonify({'message': 'No data available'}), 200
 
-        # Dynamically fetch column names
-        columns = [desc[0] for desc in cursor.description]
+        # Convert result to a list of dictionaries
+        columns = ['close', 'date', 'high', 'low', 'oi', 'open', 'symbol', 'time', 'volume']
         result = [dict(zip(columns, row)) for row in rows]
 
-        # Return the response with 200 status code
+        # Return the response
         return jsonify(result), 200
 
     except pytds.DatabaseError as db_error:
@@ -105,12 +99,11 @@ def get_data():
         print(f"Unexpected error: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
-        # Ensure resources are safely closed if they were initialized
+        # Ensure resources are safely closed
         if cursor:
             cursor.close()
         if conn:
             conn.close()
-
 
 @app.route('/insert-data', methods=['POST'])
 def insert_data():
