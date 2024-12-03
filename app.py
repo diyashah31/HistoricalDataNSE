@@ -1,0 +1,411 @@
+import os
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify
+from maticalgos.historical import historical
+import pytds
+import datetime
+import pandas as pd
+import pyodbc
+import numpy as np
+from flask_cors import CORS
+
+app = Flask(__name__)
+# CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Access the environment variables
+# MATICALGOS_USER = os.getenv('MATICALGOS_USER')
+# MATICALGOS_PASS = os.getenv('MATICALGOS_PASS')
+# server = os.getenv('DB_SERVER')
+# database = os.getenv('DB_NAME')
+# username = os.getenv('DB_USER')
+# password = os.getenv('DB_PASSWORD')
+# Initialize and login to maticalgos
+ma = historical('diya.shah@finideas.com')
+ma.login("920434")
+
+# SQL Server connection details
+server = '192.168.121.84'
+database = 'HistoricalData'
+username = 'sa'
+password = 'Fin@123#'
+
+def get_db_connection():
+    return pytds.connect(
+        server=server,
+        database=database,
+        user=username,
+        password=password,
+        timeout=30,
+        login_timeout=15
+    )
+
+@app.route('/')
+def home():
+    return jsonify({"message": "Hello, Welcome to Historical NSE Database!"})
+
+@app.route('/api/get-data', methods=['POST'])
+def get_data():
+    try:
+        data = request.get_json()
+        
+        # Validate incoming data
+        from_date = data.get('fromDate')
+        to_date = data.get('toDate')
+        selection = data.get('selection')
+        
+        if not from_date or not to_date or not selection:
+            return jsonify({'error': 'Missing required parameters: fromDate, toDate, or selection'}), 400
+
+        # Dynamically set table name based on selection
+        table_name = f"{selection}Data"  # "niftyData" or "bankniftyData"
+
+        # Connect to SQL Server
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Fetch data for the selected date range and symbol
+        query = f"""
+        SELECT * FROM {table_name}
+        WHERE date BETWEEN '{from_date}' AND '{to_date}'
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+
+        if not rows:
+            print("no row")
+            return jsonify({'message': 'No data available'})
+
+        # Convert the rows into a list of dictionaries
+        columns = ['close', 'date', 'high', 'low', 'oi', 'open', 'symbol', 'time', 'volume']
+        result = [dict(zip(columns, row)) for row in rows]
+
+        # Validate the result format before returning
+        if isinstance(result, list) and all(isinstance(item, dict) for item in result):
+            return jsonify(result)
+        else:
+            raise ValueError("Data format is incorrect. Expected a list of dictionaries.")
+
+    except Exception as e:
+        # General error handler
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        # Close the database connection
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+@app.route('/api/insert-data', methods=['POST'])
+def insert_data():
+    data = request.json
+    from_date = data.get('fromDate')
+    to_date = data.get('toDate')
+    selection = data.get('selection')
+
+    # Validate input
+    if not from_date or not to_date or not selection:
+        return jsonify({"message": "Invalid input. Please provide fromDate, toDate, and selection."}), 400
+
+    try:
+        # Convert dates
+        from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
+        to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
+
+        if from_date > to_date:
+            return jsonify({"message": "Start date must be less than end date."}), 400
+
+        # Call your existing data-fetching and insertion logic
+        inserted_dates, existing_dates = insert_data_into_db(from_date, to_date, selection)
+
+        return jsonify({
+            "message": f"Data inserted successfully for {selection} from {from_date} to {to_date}.",
+            "insertedDates": inserted_dates,
+            "existingDates": existing_dates
+        })
+    except Exception as e:
+        return jsonify({"message": f"Error: {str(e)}"}), 500
+
+
+def insert_data_into_db(from_date, to_date, symbol):
+    # Dynamically set table name based on the symbol
+    table_name = f"{symbol}Data"  # Example: "niftyData" or "bankniftyData"
+
+    try:
+        # Connect to the SQL Server
+        conn = pytds.connect(
+            server=server,
+            database=database,
+            user=username,
+            password=password,
+            timeout=30,
+            login_timeout=15
+        )
+        cursor = conn.cursor()
+        print("Connection successful!")
+
+        # Create table if it doesn't exist
+        create_table_query = f"""
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='{table_name}' AND xtype='U')
+        CREATE TABLE {table_name} (
+            [close] FLOAT,
+            [date] DATE,
+            [high] FLOAT,
+            [low] FLOAT,
+            [oi] FLOAT,
+            [open] FLOAT,
+            [symbol] NVARCHAR(50),
+            [time] NVARCHAR(10),
+            [volume] INT
+        )
+        """
+        cursor.execute(create_table_query)
+
+        # Check for existing dates in the database
+        check_query = f"""
+        SELECT DISTINCT date FROM {table_name}
+        WHERE date BETWEEN '{from_date}' AND '{to_date}'
+        """
+        cursor.execute(check_query)
+        existing_dates = {row[0] for row in cursor.fetchall()}
+
+        # Prepare INSERT query
+        insert_query = f"""
+        INSERT INTO {table_name} ([close], [date], [high], [low], [oi], [open], [symbol], [time], [volume])
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        # Loop through each day from start_date to end_date
+        current_date = from_date
+        inserted_dates = []
+        while current_date <= to_date:
+            # Skip weekends and already existing dates
+            if current_date.weekday() >= 5 or current_date in existing_dates:
+                current_date += datetime.timedelta(days=1)
+                continue
+
+            print(f"Fetching data for: {current_date}")
+            try:
+                # Fetch data for the current date
+                dataNifty = ma.get_data(symbol, current_date)
+
+                # Ensure columns are numeric
+                numeric_columns = ['close', 'high', 'low', 'oi', 'open']
+                for col in numeric_columns:
+                    dataNifty[col] = pd.to_numeric(dataNifty[col], errors='coerce').fillna(0.0)
+
+                # Insert rows
+                for _, row in dataNifty.iterrows():
+                    try:
+                        cursor.execute(insert_query, (
+                            float(row['close']), row['date'], float(row['high']),
+                            float(row['low']), float(row['oi']), float(row['open']),
+                            row['symbol'], row['time'], row['volume']
+                        ))
+                    except Exception as ex:
+                        print(f"Skipping row due to error: {row}, Error: {ex}")
+
+                # Commit for the current date
+                conn.commit()
+                inserted_dates.append(str(current_date))
+
+            except Exception as e:
+                print(f"Error fetching/inserting data for {current_date}: {e}")
+
+            current_date += datetime.timedelta(days=1)
+
+        print("Data insertion completed!")
+        print(f"Inserted Dates: {inserted_dates}")
+        print(f"Skipped Existing Dates: {list(existing_dates)}")
+        return inserted_dates, list(existing_dates)
+
+    except pytds.DatabaseError as e:
+        print("Database error:", e)
+        return [],[]
+    except Exception as ex:
+        print("An error occurred:", ex)
+        return [],[]
+    finally:
+        # Close the connection
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+            print("Connection closed.")
+  
+@app.route('/api/delete-data', methods=['DELETE'])
+def delete_data():
+    try:
+        data = request.get_json()
+        from_date = data['fromDate']
+        to_date = data['toDate']
+        selection = data['selection']
+
+        # Dynamically set table name based on selection
+        table_name = f"{selection}Data"  # "niftyData" or "bankniftyData"
+
+        # Connect to SQL Server
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Delete data for the selected date range and symbol
+        delete_query = f"""
+        DELETE FROM {table_name}
+        WHERE date BETWEEN '{from_date}' AND '{to_date}'
+        """
+        cursor.execute(delete_query)
+        conn.commit()
+
+        return jsonify({'message': 'Data deleted successfully'})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        # Close the database connection
+        cursor.close()
+        conn.close()
+
+@app.route('/api/export-to-sql', methods=['POST'])
+def export_to_sql():
+    
+    # Get the data and SQL details from the request
+    data = request.json
+    from_date = data.get('fromDate')
+    to_date = data.get('toDate')
+    selection = data.get('selection') 
+    server = data.get('server')
+    database = data.get('database')
+    username = data.get('username')
+    password = data.get('password')
+    # Validate input
+    if not from_date or not to_date or not selection:
+        return jsonify({"message": "Invalid input. Please provide fromDate, toDate, and selection."}), 400
+    
+    try:
+        # Convert dates
+        from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
+        to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
+        print(from_date,to_date)
+        if from_date > to_date:
+            return jsonify({"message": "Start date must be less than end date."}), 400
+        
+        # Call your existing data-fetching and insertion logic
+        export_data_into_db(from_date, to_date, selection,server,database,username,password)
+        
+        return jsonify({"message": f"Data inserted successfully for {selection} from {from_date} to {to_date}."})
+    except Exception as e:
+        return jsonify({"message": f"Error: {str(e)}"}), 500
+
+        
+def export_data_into_db(from_date, to_date, symbol,server,database,username,password):
+    # Dynamically set table name based on the symbol
+    table_name = f"{symbol}Data" 
+    try:
+        connection_string = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={server};"  # Use the provided server
+            f"DATABASE={database};"  # Use the provided database
+            f"UID={username};"  # Use the provided username
+            f"PWD={password};"  # Use the provided password
+        )
+        # Connect to the SQL Server
+        conn = pyodbc.connect(connection_string)
+        cursor = conn.cursor()
+        print("Connection successful!")
+
+        # Create table if it doesn't exist
+        create_table_query = f"""
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='{table_name}' AND xtype='U')
+        CREATE TABLE {table_name} (
+            [close] FLOAT,
+            [date] DATE,
+            [high] FLOAT,
+            [low] FLOAT,
+            [oi] FLOAT,
+            [open] FLOAT,
+            [symbol] NVARCHAR(50),
+            [time] NVARCHAR(10),
+            [volume] INT
+        )
+        """
+        cursor.execute(create_table_query)
+
+        # Check for existing dates in the database
+        check_query = f"""
+        SELECT DISTINCT date FROM {table_name}
+        WHERE date BETWEEN '{from_date}' AND '{to_date}'
+        """
+        cursor.execute(check_query)
+        existing_dates = {row[0] for row in cursor.fetchall()}
+
+        # Prepare INSERT query
+        # Prepare INSERT query with 9 parameter placeholders
+        insert_query = f"""
+        INSERT INTO {table_name} ([close], [date], [high], [low], [oi], [open], [symbol], [time], [volume])
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+
+        # Loop through each day from start_date to end_date
+        current_date = from_date
+        inserted_dates = []
+        while current_date <= to_date:
+            # Skip weekends and already existing dates
+            if current_date.weekday() >= 5 or current_date in existing_dates:
+                current_date += datetime.timedelta(days=1)
+                continue
+
+            print(f"Fetching data for: {current_date}")
+            try:
+                # Fetch data for the current date
+                dataNifty = ma.get_data(symbol, current_date)
+
+                # Ensure columns are numeric
+                numeric_columns = ['close', 'high', 'low', 'oi', 'open']
+                for col in numeric_columns:
+                    dataNifty[col] = pd.to_numeric(dataNifty[col], errors='coerce').fillna(0.0)
+
+                # Insert rows
+                for _, row in dataNifty.iterrows():
+                    try:
+                        cursor.execute(insert_query, (
+                            float(row['close']), row['date'], float(row['high']),
+                            float(row['low']), float(row['oi']), float(row['open']),
+                            row['symbol'], row['time'], row['volume']
+                        ))
+                    except Exception as ex:
+                        print(f"Skipping row due to error: {row}, Error: {ex}")
+
+                # Commit for the current date
+                conn.commit()
+                inserted_dates.append(str(current_date))
+
+            except Exception as e:
+                print(f"Error fetching/inserting data for {current_date}: {e}")
+
+            current_date += datetime.timedelta(days=1)
+
+        print("Data insertion completed!")
+        print(f"Inserted Dates: {inserted_dates}")
+        print(f"Skipped Existing Dates: {list(existing_dates)}")
+
+    except pytds.DatabaseError as e:
+        print("Database error:", e)
+    except Exception as ex:
+        print("An error occurred:", ex)
+    finally:
+        # Close the connection
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+            print("Connection closed.")
+  
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)

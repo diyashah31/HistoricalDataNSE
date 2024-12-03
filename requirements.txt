@@ -1,0 +1,9 @@
+Flask
+gunicorn
+Flask-Cors
+pyodbc
+python-tds
+pandas
+numpy
+maticalgos
+python-dotenv
