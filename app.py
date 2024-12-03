@@ -51,6 +51,8 @@ def home():
 
 @app.route('/get-data', methods=['POST'])
 def get_data():
+    conn = None
+    cursor = None
     try:
         # Get JSON data from request
         data = request.get_json()
@@ -66,8 +68,6 @@ def get_data():
         table_name = f"{selection}Data"  # Example: "niftyData" or "bankniftyData"
 
         # Connect to SQL Server
-        # conn = get_db_connection()
-        # cursor = conn.cursor()
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -75,8 +75,9 @@ def get_data():
             print("Database connection successful.")
         except Exception as e:
             print(f"Database connection failed: {e}")
+            return jsonify({'error': 'Database connection failed'}), 500
 
-        # Fetch data
+        # Fetch data with parameterized query to avoid SQL injection
         query = f"""
         SELECT TOP 100 * FROM {table_name}
         WHERE date BETWEEN %s AND %s
@@ -92,7 +93,7 @@ def get_data():
         columns = [desc[0] for desc in cursor.description]
         result = [dict(zip(columns, row)) for row in rows]
 
-        # Return the response
+        # Return the response with 200 status code
         return jsonify(result), 200
 
     except pytds.DatabaseError as db_error:
@@ -104,7 +105,7 @@ def get_data():
         print(f"Unexpected error: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
-        # Ensure resources are safely closed
+        # Ensure resources are safely closed if they were initialized
         if cursor:
             cursor.close()
         if conn:
