@@ -40,8 +40,8 @@ def get_db_connection():
         database=database,
         user=username,
         password=password,
-        timeout=120,
-        login_timeout=60
+        timeout=60,
+        login_timeout=30
     )
 
 @app.route('/')
@@ -51,8 +51,6 @@ def home():
 
 @app.route('/get-data', methods=['POST'])
 def get_data():
-    conn = None
-    cursor = None
     try:
         # Get JSON data from request
         data = request.get_json()
@@ -64,18 +62,21 @@ def get_data():
         if not from_date or not to_date or not selection:
             return jsonify({'error': 'Missing required parameters: fromDate, toDate, or selection'}), 400
 
-        # Validate selection
-        valid_tables = ['nifty', 'banknifty']  # Valid table prefixes
-        if selection not in valid_tables:
-            return jsonify({'error': 'Invalid selection parameter'}), 400
-
-        table_name = f"{selection}Data"
+        # Dynamically set table name based on selection
+        table_name = f"{selection}Data"  # Example: "niftyData" or "bankniftyData"
 
         # Connect to SQL Server
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # conn = get_db_connection()
+        # cursor = conn.cursor()
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            print("Database connection successful.")
+        except Exception as e:
+            print(f"Database connection failed: {e}")
 
-        # Fetch data using parameterized query
+        # Fetch data
         query = f"""
         SELECT TOP 100 * FROM {table_name}
         WHERE date BETWEEN %s AND %s
@@ -84,8 +85,8 @@ def get_data():
         rows = cursor.fetchall()
 
         # Handle case when no data is found
-        if len(rows) == 0:
-            return jsonify({'message': 'No data available'}), 200
+        if not rows:
+            return jsonify({'message': 'No data available'}), 404
 
         # Dynamically fetch column names
         columns = [desc[0] for desc in cursor.description]
