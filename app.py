@@ -40,8 +40,8 @@ def get_db_connection():
         database=database,
         user=username,
         password=password,
-        timeout=30,
-        login_timeout=15
+        timeout=60,
+        login_timeout=30
     )
 
 @app.route('/')
@@ -65,16 +65,30 @@ def get_data():
         table_name = f"{selection}Data"  # "niftyData" or "bankniftyData"
 
         # Connect to SQL Server
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # conn = get_db_connection()
+        # cursor = conn.cursor()
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            print("Database connection successful.")
+        except Exception as e:
+            print(f"Database connection failed: {e}")
+
 
         # Fetch data for the selected date range and symbol
         query = f"""
-        SELECT * FROM {table_name}
+        SELECT TOP 100 * FROM {table_name}
         WHERE date BETWEEN '{from_date}' AND '{to_date}'
         """
-        cursor.execute(query)
-        rows = cursor.fetchall()
+        # cursor.execute(query)
+        # rows = cursor.fetchall()
+        try:
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            print(f"Data fetched from DB: {rows}")
+        except Exception as e:
+            print(f"Database fetch error: {e}")
 
         if not rows:
             print("no row")
@@ -191,8 +205,11 @@ def insert_data_into_db(from_date, to_date, symbol):
 
             print(f"Fetching data for: {current_date}")
             try:
-                # Fetch data for the current date
-                dataNifty = ma.get_data(symbol, current_date)
+                try:
+                    dataNifty = ma.get_data(symbol, current_date)
+                    print(f"Data fetched for {current_date}: {dataNifty}")
+                except Exception as e:
+                    print(f"Failed to fetch data for {current_date}: {e}")
 
                 # Ensure columns are numeric
                 numeric_columns = ['close', 'high', 'low', 'oi', 'open']
