@@ -8,6 +8,7 @@ import pandas as pd
 import pyodbc
 import numpy as np
 from flask_cors import CORS
+import pymssql
 
 app = Flask(__name__)
 CORS(app)
@@ -29,20 +30,39 @@ ma = historical('diya.shah@finideas.com')
 ma.login("920434")
 
 # SQL Server connection details
-server = '139.5.190.161,1401'
-database = 'Test'
-username = 'payal'
-password = 'Admin@789456'
+# server = '139.5.190.161,1401'
+# database = 'Test'
+# username = 'payal'
+# password = 'Admin@789456'
+
+# def get_db_connection():
+#     return pytds.connect(
+#         server=server,
+#         database=database,
+#         user=username,
+#         password=password,
+#         timeout=60,
+#         login_timeout=30
+#     )
 
 def get_db_connection():
-    return pytds.connect(
-        server=server,
-        database=database,
-        user=username,
-        password=password,
-        timeout=60,
-        login_timeout=30
-    )
+    try:
+        # Replace these with your database details
+        host = '139.5.190.161,1401'
+        user = 'payal'
+        password = 'Admin@789456'
+        database = 'Test'
+
+        conn = pymssql.connect(
+            host=host,
+            user=user,
+            password=password,
+            database=database
+        )
+        return conn
+    except pymssql.DatabaseError as e:
+        print(f"Database connection failed: {e}")
+        raise e
 
 @app.route('/')
 def home():
@@ -84,7 +104,7 @@ def get_data():
             return jsonify({'message': 'No data available'}), 200
 
         # Convert result to a list of dictionaries
-        columns = ['close', 'date', 'high', 'low', 'oi', 'open', 'symbol', 'time', 'volume']
+        columns = [desc[0] for desc in cursor.description]
         result = [dict(zip(columns, row)) for row in rows]
 
         # Return the response
