@@ -29,10 +29,10 @@ ma = historical('diya.shah@finideas.com')
 ma.login("920434")
 
 # SQL Server connection details
-server = '192.168.121.84,1433'
-database = 'HistoricalData'
-username = 'sa'
-password = 'Fin@123#'
+server = '139.5.190.161,1401'
+database = 'Test'
+username = 'payal'
+password = 'Admin@789456'
 
 def get_db_connection():
     return pytds.connect(
