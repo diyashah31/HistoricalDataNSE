@@ -10,11 +10,12 @@ import numpy as np
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app,origins=["http://localhost:3000","https://674eb2927e66b7f220d5ebd1--bejewelled-marigold-b271f6.netlify.app/"])
+CORS(app)
+# CORS(app,origins=["http://localhost:3000","https://674eb2927e66b7f220d5ebd1--bejewelled-marigold-b271f6.netlify.app/"])
 # CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Load environment variables from .env file
-load_dotenv()
+# load_dotenv()
 
 # Access the environment variables
 # MATICALGOS_USER = os.getenv('MATICALGOS_USER')
