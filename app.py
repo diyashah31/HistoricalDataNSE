@@ -40,80 +40,75 @@ def get_db_connection():
         database=database,
         user=username,
         password=password,
-        timeout=60,
-        login_timeout=30
+        timeout=120,
+        login_timeout=60
     )
 
 @app.route('/')
 def home():
     return jsonify({"message": "Hello, Welcome to Historical NSE Database!"})
 
+
 @app.route('/get-data', methods=['POST'])
 def get_data():
+    conn = None
+    cursor = None
     try:
+        # Get JSON data from request
         data = request.get_json()
-        
-        # Validate incoming data
         from_date = data.get('fromDate')
         to_date = data.get('toDate')
         selection = data.get('selection')
-        
+
+        # Validate input
         if not from_date or not to_date or not selection:
             return jsonify({'error': 'Missing required parameters: fromDate, toDate, or selection'}), 400
 
-        # Dynamically set table name based on selection
-        table_name = f"{selection}Data"  # "niftyData" or "bankniftyData"
+        # Validate selection
+        valid_tables = ['nifty', 'banknifty']  # Valid table prefixes
+        if selection not in valid_tables:
+            return jsonify({'error': 'Invalid selection parameter'}), 400
+
+        table_name = f"{selection}Data"
 
         # Connect to SQL Server
-        # conn = get_db_connection()
-        # cursor = conn.cursor()
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            print("Database connection successful.")
-        except Exception as e:
-            print(f"Database connection failed: {e}")
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-
-        # Fetch data for the selected date range and symbol
+        # Fetch data using parameterized query
         query = f"""
         SELECT TOP 100 * FROM {table_name}
-        WHERE date BETWEEN '{from_date}' AND '{to_date}'
+        WHERE date BETWEEN %s AND %s
         """
-        # cursor.execute(query)
-        # rows = cursor.fetchall()
-        try:
-            cursor.execute(query)
-            rows = cursor.fetchall()
-            print(f"Data fetched from DB: {rows}")
-        except Exception as e:
-            print(f"Database fetch error: {e}")
+        cursor.execute(query, (from_date, to_date))
+        rows = cursor.fetchall()
 
-        if not rows:
-            print("no row")
-            return jsonify({'message': 'No data available'})
+        # Handle case when no data is found
+        if len(rows) == 0:
+            return jsonify({'message': 'No data available'}), 200
 
-        # Convert the rows into a list of dictionaries
-        columns = ['close', 'date', 'high', 'low', 'oi', 'open', 'symbol', 'time', 'volume']
+        # Dynamically fetch column names
+        columns = [desc[0] for desc in cursor.description]
         result = [dict(zip(columns, row)) for row in rows]
 
-        # Validate the result format before returning
-        if isinstance(result, list) and all(isinstance(item, dict) for item in result):
-            return jsonify(result)
-        else:
-            raise ValueError("Data format is incorrect. Expected a list of dictionaries.")
+        # Return the response
+        return jsonify(result), 200
 
+    except pytds.DatabaseError as db_error:
+        # Log and return database-related errors
+        print(f"Database fetch error: {db_error}")
+        return jsonify({'error': 'Database error occurred'}), 500
     except Exception as e:
         # General error handler
+        print(f"Unexpected error: {e}")
         return jsonify({'error': str(e)}), 500
-
     finally:
-        # Close the database connection
-        if 'cursor' in locals():
+        # Ensure resources are safely closed
+        if cursor:
             cursor.close()
-        if 'conn' in locals():
+        if conn:
             conn.close()
+
 
 @app.route('/insert-data', methods=['POST'])
 def insert_data():
