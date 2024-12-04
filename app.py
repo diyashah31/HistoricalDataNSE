@@ -143,6 +143,8 @@ def insert_data():
         return jsonify({"message": f"Error: {str(e)}"}), 500
 
 
+
+
 def insert_data_into_db(from_date, to_date, symbol):
     # Dynamically set table name based on the symbol
     table_name = f"{symbol}Data"  # Example: "niftyData" or "bankniftyData"
