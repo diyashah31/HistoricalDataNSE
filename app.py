@@ -1,4 +1,5 @@
 import os
+import ssl
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from maticalgos.historical import historical
@@ -35,15 +36,34 @@ database = 'HistoricalData'
 username = 'sa'
 password = 'Fin@123#'
 
+# def get_db_connection():
+#     return pytds.connect(
+#         server=server,
+#         database=database,
+#         user=username,
+#         password=password,
+#         encrypt=True,
+#         trust_server_certificate=False,
+#         timeout=60,
+#         login_timeout=30
+#     )
+
 def get_db_connection():
-    return pytds.connect(
-        server=server,
-        database=database,
-        user=username,
-        password=password,
-        timeout=60,
-        login_timeout=30
-    )
+    try:
+
+        conn = pytds.connect(
+            server='192.168.121.84',
+            database='HistoricalData',
+            user='sa',
+            password='Fin@123#',
+            port=1433, 
+            timeout=30
+           )
+        print("Database connection successful!")
+        return conn
+    except Exception as e:
+        print(f"Database connection failed: {e}")
+        raise e
 
 # def get_db_connection():
 #     try:
@@ -444,5 +464,5 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
             print("Connection closed.")
   
 
-# if __name__ == '__main__':
-#     app.run(debug=True, host='0.0.0.0', port=5001)
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5001)
