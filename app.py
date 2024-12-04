@@ -73,6 +73,9 @@ def get_db_connection():
             'DATABASE=HistoricalData;'
             'UID=sa;'
             'PWD=Fin@123#'
+            'Encrypt=yes;'
+            'TrustServerCertificate=no;'
+            'Connection Timeout=30;'
         )
         return conn
     except Exception as e:
