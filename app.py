@@ -48,50 +48,37 @@ password = 'Fin@123#'
 #         login_timeout=30
 #     )
 
+# def get_db_connection():
+#     try:
+
+#         conn = pytds.connect(
+#             server='192.168.121.84',
+#             database='HistoricalData',
+#             user='sa',
+#             password='Fin@123#',
+#             port=1433, 
+#             timeout=30
+#            )
+#         print("Database connection successful!")
+#         return conn
+#     except Exception as e:
+#         print(f"Database connection failed: {e}")
+#         raise e
+
 def get_db_connection():
     try:
-
-        conn = pytds.connect(
-            server='192.168.121.84',
-            database='HistoricalData',
-            user='sa',
-            password='Fin@123#',
-            port=1433, 
-            timeout=30
-           )
-        print("Database connection successful!")
+        conn = pyodbc.connect(
+            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'SERVER=192.168.121.84,1433;'  # Use the correct IP and port
+            'DATABASE=HistoricalData;'
+            'UID=sa;'
+            'PWD=Fin@123#'
+        )
         return conn
     except Exception as e:
         print(f"Database connection failed: {e}")
         raise e
 
-# def get_db_connection():
-#     try:
-#         # Replace these with your database details
-#         host = '139.5.190.161,1401'
-#         user = 'payal'
-#         password = 'Admin@789456'
-#         database = 'Test'
-
-#         conn = pymssql.connect(
-#             host=host,
-#             user=user,
-#             password=password,
-#             database=database,
-#             timeout=30
-#         )
-#         conn = pyodbc.connect(
-#             'DRIVER={ODBC Driver 17 for SQL Server};'
-#             'SERVER=192.168.121.63,1401;'
-#             'DATABASE=Test;'
-#             'UID=sa;'
-#             'PWD=123456'
-#         )
-#         return conn
-#     except pymssql.DatabaseError as e:
-#         print(f"Database connection failed: {e}")
-#         raise e
-# pymssql.set_debug(True)
 
 @app.route('/')
 def home():
@@ -204,14 +191,7 @@ def insert_data_into_db(from_date, to_date, symbol):
 
     try:
         # Connect to the SQL Server
-        conn = pytds.connect(
-            server=server,
-            database=database,
-            user=username,
-            password=password,
-            timeout=30,
-            login_timeout=15
-        )
+        conn = get_db_connection()
         cursor = conn.cursor()
         print("Connection successful!")
 
@@ -243,8 +223,9 @@ def insert_data_into_db(from_date, to_date, symbol):
         # Prepare INSERT query
         insert_query = f"""
         INSERT INTO {table_name} ([close], [date], [high], [low], [oi], [open], [symbol], [time], [volume])
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
+
 
         # Loop through each day from start_date to end_date
         current_date = from_date
@@ -360,7 +341,7 @@ def export_to_sql():
         # Convert dates
         from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
         to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
-        print(from_date,to_date)
+        
         if from_date > to_date:
             return jsonify({"message": "Start date must be less than end date."}), 400
         
@@ -375,6 +356,8 @@ def export_to_sql():
 def export_data_into_db(from_date, to_date, symbol,server,database,username,password):
     # Dynamically set table name based on the symbol
     table_name = f"{symbol}Data" 
+    conn = None
+    cursor = None
     try:
         connection_string = (
             f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -387,6 +370,7 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
         conn = pyodbc.connect(connection_string)
         cursor = conn.cursor()
         print("Connection successful!")
+
 
         # Create table if it doesn't exist
         create_table_query = f"""
@@ -477,5 +461,5 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
             print("Connection closed.")
   
 
-# if __name__ == '__main__':
-#     app.run(debug=True, host='0.0.0.0', port=5001)
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5001)
