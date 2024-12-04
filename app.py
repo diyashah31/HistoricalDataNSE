@@ -28,7 +28,12 @@ CORS(app)
 # password = os.getenv('DB_PASSWORD')
 # Initialize and login to maticalgos
 ma = historical('diya.shah@finideas.com')
-ma.login("920434")
+try:
+    login_response = ma.login("920434")
+    print("Login successful!")
+except Exception as e:
+    print(f"Login failed: {e}")
+    login_response = None
 
 # SQL Server connection details
 server = '192.168.121.84'
@@ -465,5 +470,5 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
 # if __name__ == '__main__':
 #     app.run(debug=True, host='0.0.0.0', port=5001)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+# if __name__ == '__main__':
+#     app.run(debug=True)
