@@ -97,6 +97,19 @@ def get_db_connection():
 def home():
     return jsonify({"message": "Hello, Welcome to Historical NSE Database!"})
 
+@app.route('/test-connection', methods=['GET'])
+def test_connection():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return jsonify({"status": "success", "result": result})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 
 @app.route('/get-data', methods=['POST'])
 def get_data():
@@ -464,5 +477,5 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
             print("Connection closed.")
   
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5001)
+# if __name__ == '__main__':
+#     app.run(debug=True, host='0.0.0.0', port=5001)
