@@ -30,39 +30,48 @@ ma = historical('diya.shah@finideas.com')
 ma.login("920434")
 
 # SQL Server connection details
-server = '139.5.190.161'
-database = 'Test'
-username = 'payal'
-password = 'Admin@789456'
-
-# def get_db_connection():
-#     return pytds.connect(
-#         server=server,
-#         database=database,
-#         user=username,
-#         password=password,
-#         timeout=60,
-#         login_timeout=30
-#     )
+server = '192.168.121.84'
+database = 'HistoricalData'
+username = 'sa'
+password = 'Fin@123#'
 
 def get_db_connection():
-    try:
-        # Replace these with your database details
-        host = '139.5.190.161,1401'
-        user = 'payal'
-        password = 'Admin@789456'
-        database = 'Test'
+    return pytds.connect(
+        server=server,
+        database=database,
+        user=username,
+        password=password,
+        timeout=30,
+        login_timeout=15
+    )
 
-        conn = pymssql.connect(
-            host=host,
-            user=user,
-            password=password,
-            database=database
-        )
-        return conn
-    except pymssql.DatabaseError as e:
-        print(f"Database connection failed: {e}")
-        raise e
+# def get_db_connection():
+#     try:
+#         # Replace these with your database details
+#         host = '139.5.190.161,1401'
+#         user = 'payal'
+#         password = 'Admin@789456'
+#         database = 'Test'
+
+#         conn = pymssql.connect(
+#             host=host,
+#             user=user,
+#             password=password,
+#             database=database,
+#             timeout=30
+#         )
+#         conn = pyodbc.connect(
+#             'DRIVER={ODBC Driver 17 for SQL Server};'
+#             'SERVER=192.168.121.63,1401;'
+#             'DATABASE=Test;'
+#             'UID=sa;'
+#             'PWD=123456'
+#         )
+#         return conn
+#     except pymssql.DatabaseError as e:
+#         print(f"Database connection failed: {e}")
+#         raise e
+# pymssql.set_debug(True)
 
 @app.route('/')
 def home():
@@ -101,28 +110,28 @@ def get_data():
 
         # Handle case when no data is found
         if not rows:
+            print("no row")
             return jsonify({'message': 'No data available'}), 200
 
         # Convert result to a list of dictionaries
-        columns = [desc[0] for desc in cursor.description]
+        columns = ['close', 'date', 'high', 'low', 'oi', 'open', 'symbol', 'time', 'volume']
         result = [dict(zip(columns, row)) for row in rows]
 
-        # Return the response
-        return jsonify(result), 200
+        # Validate the result format before returning
+        if isinstance(result, list) and all(isinstance(item, dict) for item in result):
+            return jsonify(result)
+        else:
+            raise ValueError("Data format is incorrect. Expected a list of dictionaries.")
 
-    except pytds.DatabaseError as db_error:
-        # Log and return database-related errors
-        print(f"Database fetch error: {db_error}")
-        return jsonify({'error': 'Database error occurred'}), 500
     except Exception as e:
         # General error handler
-        print(f"Unexpected error: {e}")
         return jsonify({'error': str(e)}), 500
+
     finally:
-        # Ensure resources are safely closed
-        if cursor:
+        # Close the database connection
+        if 'cursor' in locals():
             cursor.close()
-        if conn:
+        if 'conn' in locals():
             conn.close()
 
 @app.route('/insert-data', methods=['POST'])
@@ -436,4 +445,4 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
   
 
 # if __name__ == '__main__':
-#     app.run(debug=True, host='0.0.0.0', port=5000)
+#     app.run(debug=True, host='0.0.0.0', port=5001)
