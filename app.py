@@ -1,4 +1,5 @@
 import os
+import ssl
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from maticalgos.historical import historical
@@ -8,6 +9,7 @@ import pandas as pd
 import pyodbc
 import numpy as np
 from flask_cors import CORS
+import pymssql
 
 app = Flask(__name__)
 CORS(app)
@@ -29,24 +31,72 @@ ma = historical('diya.shah@finideas.com')
 ma.login("920434")
 
 # SQL Server connection details
-server = '139.5.190.161,1401'
-database = 'Test'
-username = 'payal'
-password = 'Admin@789456'
+server = '192.168.121.84'
+database = 'HistoricalData'
+username = 'sa'
+password = 'Fin@123#'
+
+# def get_db_connection():
+#     return pytds.connect(
+#         server=server,
+#         database=database,
+#         user=username,
+#         password=password,
+#         encrypt=True,
+#         trust_server_certificate=False,
+#         timeout=60,
+#         login_timeout=30
+#     )
+
+# def get_db_connection():
+#     try:
+
+#         conn = pytds.connect(
+#             server='192.168.121.84',
+#             database='HistoricalData',
+#             user='sa',
+#             password='Fin@123#',
+#             port=1433, 
+#             timeout=30
+#            )
+#         print("Database connection successful!")
+#         return conn
+#     except Exception as e:
+#         print(f"Database connection failed: {e}")
+#         raise e
 
 def get_db_connection():
-    return pytds.connect(
-        server=server,
-        database=database,
-        user=username,
-        password=password,
-        timeout=60,
-        login_timeout=30
-    )
+    try:
+        conn = pyodbc.connect(
+            'DRIVER={ODBC Driver 17 for SQL Server};'
+            'SERVER=192.168.121.84,1433;'  # Use the correct IP and port
+            'DATABASE=HistoricalData;'
+            'UID=sa;'
+            'PWD=Fin@123#'
+            
+        )
+        return conn
+    except Exception as e:
+        print(f"Database connection failed: {e}")
+        raise e
+
 
 @app.route('/')
 def home():
     return jsonify({"message": "Hello, Welcome to Historical NSE Database!"})
+
+@app.route('/test-connection', methods=['GET'])
+def test_connection():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return jsonify({"status": "success", "result": result})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
 
 @app.route('/get-data', methods=['POST'])
@@ -67,50 +117,43 @@ def get_data():
         # Dynamically set table name based on selection
         table_name = f"{selection}Data"  # Example: "niftyData" or "bankniftyData"
 
-        # Connect to SQL Server
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            print("Database connection successful.")
-        except Exception as e:
-            print(f"Database connection failed: {e}")
-            return jsonify({'error': 'Database connection failed'}), 500
+        # Connect to the database
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-        # Fetch data with parameterized query to avoid SQL injection
+        # Fetch data
         query = f"""
         SELECT TOP 100 * FROM {table_name}
-        WHERE date BETWEEN %s AND %s
+        WHERE date BETWEEN '{from_date}' AND '{to_date}'
         """
-        cursor.execute(query, (from_date, to_date))
+        cursor.execute(query)
         rows = cursor.fetchall()
 
         # Handle case when no data is found
         if not rows:
-            return jsonify({'message': 'No data available'}), 404
+            print("no row")
+            return jsonify({'message': 'No data available'}), 200
 
-        # Dynamically fetch column names
-        columns = [desc[0] for desc in cursor.description]
+        # Convert result to a list of dictionaries
+        columns = ['close', 'date', 'high', 'low', 'oi', 'open', 'symbol', 'time', 'volume']
         result = [dict(zip(columns, row)) for row in rows]
 
-        # Return the response with 200 status code
-        return jsonify(result), 200
+        # Validate the result format before returning
+        if isinstance(result, list) and all(isinstance(item, dict) for item in result):
+            return jsonify(result)
+        else:
+            raise ValueError("Data format is incorrect. Expected a list of dictionaries.")
 
-    except pytds.DatabaseError as db_error:
-        # Log and return database-related errors
-        print(f"Database fetch error: {db_error}")
-        return jsonify({'error': 'Database error occurred'}), 500
     except Exception as e:
         # General error handler
-        print(f"Unexpected error: {e}")
         return jsonify({'error': str(e)}), 500
-    finally:
-        # Ensure resources are safely closed if they were initialized
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
+    finally:
+        # Close the database connection
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 @app.route('/insert-data', methods=['POST'])
 def insert_data():
@@ -148,14 +191,7 @@ def insert_data_into_db(from_date, to_date, symbol):
 
     try:
         # Connect to the SQL Server
-        conn = pytds.connect(
-            server=server,
-            database=database,
-            user=username,
-            password=password,
-            timeout=30,
-            login_timeout=15
-        )
+        conn = get_db_connection()
         cursor = conn.cursor()
         print("Connection successful!")
 
@@ -187,8 +223,9 @@ def insert_data_into_db(from_date, to_date, symbol):
         # Prepare INSERT query
         insert_query = f"""
         INSERT INTO {table_name} ([close], [date], [high], [low], [oi], [open], [symbol], [time], [volume])
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
+
 
         # Loop through each day from start_date to end_date
         current_date = from_date
@@ -304,7 +341,7 @@ def export_to_sql():
         # Convert dates
         from_date = datetime.datetime.strptime(from_date, '%Y-%m-%d').date()
         to_date = datetime.datetime.strptime(to_date, '%Y-%m-%d').date()
-        print(from_date,to_date)
+        
         if from_date > to_date:
             return jsonify({"message": "Start date must be less than end date."}), 400
         
@@ -319,6 +356,8 @@ def export_to_sql():
 def export_data_into_db(from_date, to_date, symbol,server,database,username,password):
     # Dynamically set table name based on the symbol
     table_name = f"{symbol}Data" 
+    conn = None
+    cursor = None
     try:
         connection_string = (
             f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -331,6 +370,7 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
         conn = pyodbc.connect(connection_string)
         cursor = conn.cursor()
         print("Connection successful!")
+
 
         # Create table if it doesn't exist
         create_table_query = f"""
@@ -422,4 +462,7 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
   
 
 # if __name__ == '__main__':
-#     app.run(debug=True, host='0.0.0.0', port=5000)
+#     app.run(debug=True, host='0.0.0.0', port=5001)
+
+if __name__ == '__main__':
+    app.run(debug=True)
