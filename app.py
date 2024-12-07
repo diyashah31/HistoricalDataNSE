@@ -78,7 +78,7 @@ def get_db_connection():
             'DATABASE=HistoricalData;'
             'UID=sa;'
             'PWD=Fin@123#;'
-            'Trusted_Connection=True'
+            'Trusted_Connection=False'
             
         )
         return conn
