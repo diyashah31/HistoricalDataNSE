@@ -77,7 +77,8 @@ def get_db_connection():
             'SERVER=192.168.121.84,1433;'  # Use the correct IP and port
             'DATABASE=HistoricalData;'
             'UID=sa;'
-            'PWD=Fin@123#'
+            'PWD=Fin@123#;'
+            'Trusted_Connection=True'
             
         )
         return conn
@@ -470,5 +471,5 @@ def export_data_into_db(from_date, to_date, symbol,server,database,username,pass
 # if __name__ == '__main__':
 #     app.run(debug=True, host='0.0.0.0', port=5001)
 
-# if __name__ == '__main__':
-#     app.run(debug=True)
+if __name__ == '__main__':
+    app.run(debug=True)
